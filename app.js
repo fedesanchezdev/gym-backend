@@ -175,6 +175,17 @@ app.delete('/historial/:ejercicio_id', async (req, res) => {
     }
 });
 
+// Eliminar una entrada individual del historial por su _id
+app.delete('/historial/entrada/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        await db.collection('historial_series').deleteOne({ _id: new ObjectId(id) });
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Resetear las series de un ejercicio a su valor original
 app.put('/ejercicios/:id/reset_series', async (req, res) => {
     try {
