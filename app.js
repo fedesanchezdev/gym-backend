@@ -1,215 +1,227 @@
+require('dotenv').config();
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
+const { MongoClient, ObjectId } = require('mongodb');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
 
-const app = express();
-const PORT = 3000;
+// Cambia el valor de MONGO_URI en tu archivo .env por tu cadena de conexión de MongoDB Atlas
+const MONGO_URI = process.env.MONGO_URI; // <-- .env: MONGO_URI=mongodb+srv://usuario:contraseña@cluster.mongodb.net/?retryWrites=true&w=majority
+const DB_NAME = 'gym'; // Puedes cambiar el nombre de la base de datos si lo deseas
+const PORT = 3000; // Cambia el puerto si lo necesitas
 
+const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-const db = new sqlite3.Database('./db/database.sqlite', (err) => {
-    if (err) return console.error('Error al conectar a SQLite:', err.message);
-    console.log('✅ Conectado a SQLite.');
-    inicializarBD();
-});
+let db;
 
-function inicializarBD() {
-    db.serialize(() => {
-        db.run(`CREATE TABLE IF NOT EXISTS ejercicios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            codigo TEXT NOT NULL UNIQUE,
-            grupo_muscular TEXT NOT NULL,
-            nombre TEXT NOT NULL,
-            series TEXT NOT NULL,
-            tipo TEXT NOT NULL,
-            series_original TEXT
-        )`);
-
-        db.run(`CREATE TABLE IF NOT EXISTS rutina_hoy (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ejercicio_id INTEGER NOT NULL,
-            fecha TEXT DEFAULT CURRENT_DATE,
-            FOREIGN KEY (ejercicio_id) REFERENCES ejercicios(id)
-        )`);
-
-        db.run(`CREATE TABLE IF NOT EXISTS historial_series (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ejercicio_id INTEGER NOT NULL,
-            fecha TEXT DEFAULT CURRENT_DATE,
-            series_string TEXT NOT NULL,
-            FOREIGN KEY (ejercicio_id) REFERENCES ejercicios(id)
-        )`);
-
-        db.get("SELECT COUNT(*) AS count FROM ejercicios", (err, row) => {
-            if (row.count === 0) {
-                const ejerciciosEjemplo = [
-                    {
-                        codigo: '001', grupo_muscular: 'Pecho', nombre: 'Press de banca plano',
-                        series: 'S1 R8 F8 K40 +2.5\nS2 R8 F8 K40 +0\nS3 R8 F8 K40 +0', tipo: 'series_fijas'
-                    },
-                    {
-                        codigo: '002', grupo_muscular: 'Pecho', nombre: 'Press inclinado con mancuernas',
-                        series: 'S1 R10 F10 K20 +1.5\nS2 R10 F8 K20 +0', tipo: 'series_fijas'
-                    },
-                    {
-                        codigo: '003', grupo_muscular: 'Piernas', nombre: 'Sentadillas libres',
-                        series: 'SN R50 F15-15-10-10 K30 +5', tipo: 'repeticiones_totales'
-                    }
-                ];
-
-                const stmt = db.prepare(`
-                    INSERT INTO ejercicios (codigo, grupo_muscular, nombre, series, tipo, series_original)
-                    VALUES (?, ?, ?, ?, ?, ?)`);
-
-                ejerciciosEjemplo.forEach(ej => {
-                    stmt.run([ej.codigo, ej.grupo_muscular, ej.nombre, ej.series, ej.tipo, ej.series]);
-                });
-                stmt.finalize();
-            }
+// Conexión a MongoDB
+MongoClient.connect(MONGO_URI, { useUnifiedTopology: true })
+    .then(client => {
+        db = client.db(DB_NAME);
+        console.log('✅ Conectado a MongoDB Atlas');
+        app.listen(PORT, () => {
+            console.log(`🟢 Servidor listo en http://localhost:${PORT}`);
         });
+    })
+    .catch(err => {
+        console.error('❌ Error al conectar a MongoDB:', err);
+        process.exit(1);
     });
-}
 
 // Obtener todos los ejercicios
-app.get('/ejercicios', (req, res) => {
-    db.all("SELECT * FROM ejercicios", [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
+app.get('/ejercicios', async (req, res) => {
+    try {
+        const ejercicios = await db.collection('ejercicios').find().toArray();
+        res.json(ejercicios);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // Obtener la rutina de hoy
-app.get('/rutina_hoy', (req, res) => {
-    const query = `
-        SELECT rutina_hoy.id AS rutina_id, ejercicios.*,
-        (SELECT series_string FROM historial_series WHERE ejercicio_id = ejercicios.id ORDER BY fecha DESC LIMIT 1) AS historial_series
-        FROM rutina_hoy
-        JOIN ejercicios ON rutina_hoy.ejercicio_id = ejercicios.id
-        WHERE rutina_hoy.fecha = CURRENT_DATE
-    `;
-    db.all(query, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
+app.get('/rutina_hoy', async (req, res) => {
+    try {
+        const hoy = new Date();
+        const utc3 = new Date(hoy.getTime() - 3 * 60 * 60 * 1000); // Ajuste a UTC-3
+        const fechaHoy = utc3.toISOString().slice(0, 10);
+
+        // Busca rutinas de hoy
+        const rutinas = await db.collection('rutina_hoy').aggregate([
+            { $match: { fecha: fechaHoy } },
+            {
+                $lookup: {
+                    from: 'ejercicios',
+                    localField: 'ejercicio_id',
+                    foreignField: '_id',
+                    as: 'ejercicio'
+                }
+            },
+            { $unwind: '$ejercicio' },
+            {
+                $addFields: {
+                    rutina_id: '$_id',
+                    historial_series: {
+                        $arrayElemAt: [
+                            {
+                                $map: {
+                                    input: {
+                                        $filter: {
+                                            input: "$ejercicio.historial_series",
+                                            as: "h",
+                                            cond: { $eq: ["$$h.fecha", fechaHoy] }
+                                        }
+                                    },
+                                    as: "h",
+                                    in: "$$h.series_string"
+                                }
+                            },
+                            0
+                        ]
+                    }
+                }
+            }
+        ]).toArray();
+
+        // Ajusta el formato para el frontend
+        const resultado = rutinas.map(r => ({
+            rutina_id: r.rutina_id,
+            ...r.ejercicio,
+            historial_series: r.historial_series || null
+        }));
+
+        res.json(resultado);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // Obtener historial de un ejercicio
-app.get('/historial/:ejercicio_id', (req, res) => {
-    const ejercicioId = req.params.ejercicio_id;
-    const query = `
-        SELECT fecha, series_string FROM historial_series
-        WHERE ejercicio_id = ?
-        ORDER BY fecha ASC
-    `;
-    db.all(query, [ejercicioId], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
+app.get('/historial/:ejercicio_id', async (req, res) => {
+    try {
+        const ejercicioId = req.params.ejercicio_id;
+        const historial = await db.collection('historial_series')
+            .find({ ejercicio_id: new ObjectId(ejercicioId) })
+            .sort({ fecha: 1 })
+            .toArray();
+        res.json(historial);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // Agregar ejercicio a la rutina de hoy
-app.post('/rutina_hoy', (req, res) => {
-    const { ejercicio_id } = req.body;
-    const query = `INSERT INTO rutina_hoy (ejercicio_id) VALUES (?)`;
-    db.run(query, [ejercicio_id], function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true, id: this.lastID });
-    });
+app.post('/rutina_hoy', async (req, res) => {
+    try {
+        const { ejercicio_id } = req.body;
+        const hoy = new Date();
+        const utc3 = new Date(hoy.getTime() - 3 * 60 * 60 * 1000); // Ajuste a UTC-3
+        const fechaHoy = utc3.toISOString().slice(0, 10);
+
+        const result = await db.collection('rutina_hoy').insertOne({
+            ejercicio_id: new ObjectId(ejercicio_id), // Asegúrate de enviar el _id correcto desde el frontend
+            fecha: fechaHoy
+        });
+        res.json({ success: true, id: result.insertedId });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // Eliminar ejercicio de la rutina de hoy
-app.delete('/rutina_hoy/:id', (req, res) => {
-    const id = req.params.id;
-    db.run(`DELETE FROM rutina_hoy WHERE id = ?`, [id], function (err) {
-        if (err) return res.status(500).json({ error: err.message });
+app.delete('/rutina_hoy/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        await db.collection('rutina_hoy').deleteOne({ _id: new ObjectId(id) });
         res.json({ success: true });
-    });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-
-
 // Eliminar un ejercicio
-app.delete('/ejercicios/:id', (req, res) => {
-    const id = req.params.id;
-    db.run('DELETE FROM ejercicios WHERE id = ?', [id], function (err) {
-        if (err) return res.status(500).json({ error: err.message });
+app.delete('/ejercicios/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        await db.collection('ejercicios').deleteOne({ _id: new ObjectId(id) });
         res.json({ success: true });
-    });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // Borrar historial de un ejercicio
-app.delete('/historial/:ejercicio_id', (req, res) => {
-    const ejercicioId = req.params.ejercicio_id;
-    db.run('DELETE FROM historial_series WHERE ejercicio_id = ?', [ejercicioId], function (err) {
-        if (err) return res.status(500).json({ error: err.message });
+app.delete('/historial/:ejercicio_id', async (req, res) => {
+    try {
+        const ejercicioId = req.params.ejercicio_id;
+        await db.collection('historial_series').deleteMany({ ejercicio_id: new ObjectId(ejercicioId) });
         res.json({ success: true });
-    });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // Resetear las series de un ejercicio a su valor original
-app.put('/ejercicios/:id/reset_series', (req, res) => {
-    const id = req.params.id;
-    db.run(
-        'UPDATE ejercicios SET series = series_original WHERE id = ?',
-        [id],
-        function (err) {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true });
-        }
-    );
+app.put('/ejercicios/:id/reset_series', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const ejercicio = await db.collection('ejercicios').findOne({ _id: new ObjectId(id) });
+        if (!ejercicio) return res.status(404).json({ error: 'Ejercicio no encontrado' });
+        await db.collection('ejercicios').updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { series: ejercicio.series_original } }
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-app.put('/ejercicios/serie', (req, res) => {
-    const { rutina_id, series, fecha } = req.body;
-    if (!series) return res.status(400).json({ error: 'Faltan datos de series' });
+// Guardar series e historial
+app.put('/ejercicios/serie', async (req, res) => {
+    try {
+        const { rutina_id, series, fecha } = req.body;
+        if (!series) return res.status(400).json({ error: 'Faltan datos de series' });
 
-    const select = `
-        SELECT ejercicios.id FROM rutina_hoy
-        JOIN ejercicios ON rutina_hoy.ejercicio_id = ejercicios.id
-        WHERE rutina_hoy.id = ?`;
+        // Busca la rutina y el ejercicio
+        const rutina = await db.collection('rutina_hoy').findOne({ _id: new ObjectId(rutina_id) });
+        if (!rutina) return res.status(404).json({ error: 'Rutina no encontrada' });
 
-    db.get(select, [rutina_id], (err, row) => {
-        if (err || !row) return res.status(500).json({ error: 'Ejercicio no encontrado' });
+        await db.collection('ejercicios').updateOne(
+            { _id: rutina.ejercicio_id },
+            { $set: { series } }
+        );
 
-        db.run(`UPDATE ejercicios SET series = ? WHERE id = ?`, [series, row.id], (err) => {
-            if (err) return res.status(500).json({ error: err.message });
-
-            // Usa la fecha recibida o la actual ajustada a UTC-3
-            let fechaFinal = fecha;
-            if (!fechaFinal) {
-                const now = new Date();
-                const utc3 = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-                fechaFinal = utc3.toISOString().slice(0, 10);
-            }
-            db.run(
-                `INSERT INTO historial_series (ejercicio_id, series_string, fecha) VALUES (?, ?, ?)`,
-                [row.id, series, fechaFinal],
-                (err) => {
-                    if (err) return res.status(500).json({ error: err.message });
-                    res.json({ success: true });
-                }
-            );
+        // Guarda historial
+        const fechaFinal = fecha || new Date().toISOString().slice(0, 10); // Puedes ajustar la fecha si lo necesitas
+        await db.collection('historial_series').insertOne({
+            ejercicio_id: rutina.ejercicio_id,
+            series_string: series,
+            fecha: fechaFinal
         });
-    });
+
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // Crear un nuevo ejercicio
-app.post('/ejercicios', (req, res) => {
-    const { codigo, grupo_muscular, nombre, series, tipo } = req.body;
-    if (!codigo || !grupo_muscular || !nombre || !series || !tipo) {
-        return res.status(400).json({ error: 'Faltan campos obligatorios' });
+app.post('/ejercicios', async (req, res) => {
+    try {
+        const { codigo, grupo_muscular, nombre, series, tipo } = req.body;
+        if (!codigo || !grupo_muscular || !nombre || !series || !tipo) {
+            return res.status(400).json({ error: 'Faltan campos obligatorios' });
+        }
+        const result = await db.collection('ejercicios').insertOne({
+            codigo, grupo_muscular, nombre, series, tipo, series_original: series
+        });
+        res.json({ success: true, id: result.insertedId });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
-    const query = `
-        INSERT INTO ejercicios (codigo, grupo_muscular, nombre, series, tipo, series_original)
-        VALUES (?, ?, ?, ?, ?, ?)`;
-    db.run(query, [codigo, grupo_muscular, nombre, series, tipo, series], function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true, id: this.lastID });
-    });
 });
 
 // Manejo de rutas no encontradas
@@ -217,6 +229,11 @@ app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });
 });
 
-app.listen(PORT, () => {
-    console.log(`🟢 Servidor listo en http://localhost:${PORT}`);
-});
+/*
+COMENTARIOS IMPORTANTES:
+- Cambia el valor de MONGO_URI en tu archivo .env por tu cadena de conexión de MongoDB Atlas.
+- Si cambias el nombre de la base de datos, actualiza DB_NAME.
+- Si cambias el puerto, actualiza PORT.
+- Asegúrate de que el frontend use los IDs correctos (_id de MongoDB y rutina_id).
+- Si tu frontend está en otro dominio, puedes restringir CORS para mayor seguridad.
+*/
