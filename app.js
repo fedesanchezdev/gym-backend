@@ -112,6 +112,18 @@ app.get('/historial/:ejercicio_id', async (req, res) => {
     }
 });
 
+// Ruta para validar contraseña de acceso a agregar-ejercicio.html
+app.post('/validar-clave', (req, res) => {
+    const { clave } = req.body;
+    // Cambia '6573' por la clave que quieras
+    if (clave === '6573') {
+        res.json({ acceso: true });
+    } else {
+        res.json({ acceso: false });
+    }
+});
+
+
 // Agregar ejercicio a la rutina de hoy
 app.post('/rutina_hoy', async (req, res) => {
     try {
