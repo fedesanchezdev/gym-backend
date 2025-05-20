@@ -63,17 +63,24 @@ app.get('/rutina_hoy', async (req, res) => {
             {
                 $addFields: {
                     rutina_id: '$_id',
+                    // ...en la agregación de /rutina_hoy...
                     historial_series: {
-                        $map: {
+                        $reduce: {
                             input: {
-                                $filter: {
-                                    input: "$ejercicio.historial_series",
+                                $map: {
+                                    input: {
+                                        $filter: {
+                                            input: "$ejercicio.historial_series",
+                                            as: "h",
+                                            cond: { $eq: ["$$h.fecha", fechaHoy] }
+                                        }
+                                    },
                                     as: "h",
-                                    cond: { $eq: ["$$h.fecha", fechaHoy] }
+                                    in: { $split: ["$$h.series_string", "\n"] }
                                 }
                             },
-                            as: "h",
-                            in: "$$h.series_string"
+                            initialValue: [],
+                            in: { $concatArrays: ["$$value", "$$this"] }
                         }
                     }
                 }
