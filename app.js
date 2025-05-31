@@ -249,6 +249,35 @@ app.post('/ejercicios', async (req, res) => {
     }
 });
 
+// Obtener todas las rutinas predefinidas
+app.get('/rutinas_predefinidas', async (req, res) => {
+    try {
+        const rutinas = await db.collection('rutinas_predefinidas').find().toArray();
+        res.json(rutinas);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Obtener ejercicios de una rutina predefinida por semana y número
+app.get('/rutinas_predefinidas/:semana/:numero', async (req, res) => {
+    try {
+        const semana = parseInt(req.params.semana);
+        const numero = parseInt(req.params.numero);
+        const rutina = await db.collection('rutinas_predefinidas').findOne({ semana, numero });
+        if (!rutina) return res.status(404).json({ error: 'Rutina no encontrada' });
+
+        // Trae los ejercicios completos
+        const ejercicios = await db.collection('ejercicios').find({
+            _id: { $in: rutina.ejercicios.map(id => new ObjectId(id)) }
+        }).toArray();
+
+        res.json({ ...rutina, ejercicios });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Manejo de rutas no encontradas
 app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });
