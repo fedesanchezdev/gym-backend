@@ -236,12 +236,19 @@ app.put('/ejercicios/serie', async (req, res) => {
 // Crear un nuevo ejercicio
 app.post('/ejercicios', async (req, res) => {
     try {
-        const { codigo, grupo_muscular, nombre, series, tipo } = req.body;
+        const { codigo, grupo_muscular, nombre, series, tipo, descripcion, url } = req.body;
         if (!codigo || !grupo_muscular || !nombre || !series || !tipo) {
             return res.status(400).json({ error: 'Faltan campos obligatorios' });
         }
         const result = await db.collection('ejercicios').insertOne({
-            codigo, grupo_muscular, nombre, series, tipo, series_original: series
+            codigo,
+            grupo_muscular,
+            nombre,
+            series,
+            tipo,
+            descripcion: descripcion || "",
+            url: url || "",
+            series_original: series
         });
         res.json({ success: true, id: result.insertedId });
     } catch (err) {
