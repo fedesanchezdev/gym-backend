@@ -16,7 +16,7 @@ const PORT = 3000; // Cambia el puerto si lo necesitas
 app.get('/rutinas_predefinidas_completadas', async (req, res) => {
     try {
         const doc = await db.collection('estado_rutinas').findOne({ tipo: 'predefinidas_completadas' });
-        res.json(doc && doc.valor ? doc.valor : []);
+        res.json(doc && Array.isArray(doc.valor) ? doc.valor : []);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
