@@ -6,11 +6,18 @@ const cors = require('cors');
 const path = require('path');
 
 // Cambia el valor de MONGO_URI en tu archivo .env por tu cadena de conexión de MongoDB Atlas
-const MONGO_URI = process.env.MONGO_URI; // <-- .env: MONGO_URI=mongodb+srv://usuario:contraseña@cluster.mongodb.net/?retryWrites=true&w=majority
-const DB_NAME = 'gym'; // Puedes cambiar el nombre de la base de datos si lo deseas
-const PORT = 3000; // Cambia el puerto si lo necesitas
+const MONGO_URI = process.env.MONGO_URI;
+const DB_NAME = 'gym';
+const PORT = 3000;
 
-// --- NUEVO: Rutinas predefinidas completadas (global, sin usuarios) ---
+const app = express();
+app.use(cors());
+app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, '../frontend')));
+
+let db;
+
+// --- Rutinas predefinidas completadas (global, sin usuarios) ---
 
 // Obtener todas las rutinas predefinidas marcadas como completadas
 app.get('/rutinas_predefinidas_completadas', async (req, res) => {
@@ -36,13 +43,6 @@ app.post('/rutinas_predefinidas_completadas', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
-const app = express();
-app.use(cors());
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, '../frontend')));
-
-let db;
 
 // Conexión a MongoDB
 MongoClient.connect(MONGO_URI, { useUnifiedTopology: true })
@@ -90,7 +90,6 @@ app.get('/rutina_hoy', async (req, res) => {
             {
                 $addFields: {
                     rutina_id: '$_id',
-                    // ...en la agregación de /rutina_hoy...
                     historial_series: {
                         $reduce: {
                             input: {
@@ -152,7 +151,6 @@ app.post('/validar-clave', (req, res) => {
     }
 });
 
-
 // Agregar ejercicio a la rutina de hoy
 app.post('/rutina_hoy', async (req, res) => {
     try {
@@ -162,7 +160,7 @@ app.post('/rutina_hoy', async (req, res) => {
         const fechaHoy = utc3.toISOString().slice(0, 10);
 
         const result = await db.collection('rutina_hoy').insertOne({
-            ejercicio_id: new ObjectId(ejercicio_id), // Asegúrate de enviar el _id correcto desde el frontend
+            ejercicio_id: new ObjectId(ejercicio_id),
             fecha: fechaHoy
         });
         res.json({ success: true, id: result.insertedId });
@@ -247,7 +245,7 @@ app.put('/ejercicios/serie', async (req, res) => {
         );
 
         // Guarda historial
-        const fechaFinal = fecha || new Date().toISOString().slice(0, 10); // Puedes ajustar la fecha si lo necesitas
+        const fechaFinal = fecha || new Date().toISOString().slice(0, 10);
         await db.collection('historial_series').insertOne({
             ejercicio_id: rutina.ejercicio_id,
             series_string: series,
