@@ -10,6 +10,33 @@ const MONGO_URI = process.env.MONGO_URI; // <-- .env: MONGO_URI=mongodb+srv://us
 const DB_NAME = 'gym'; // Puedes cambiar el nombre de la base de datos si lo deseas
 const PORT = 3000; // Cambia el puerto si lo necesitas
 
+// --- NUEVO: Rutinas predefinidas completadas (global, sin usuarios) ---
+
+// Obtener todas las rutinas predefinidas marcadas como completadas
+app.get('/rutinas_predefinidas_completadas', async (req, res) => {
+    try {
+        const doc = await db.collection('estado_rutinas').findOne({ tipo: 'predefinidas_completadas' });
+        res.json(doc && doc.valor ? doc.valor : []);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Guardar el array de rutinas predefinidas completadas
+app.post('/rutinas_predefinidas_completadas', async (req, res) => {
+    try {
+        const completadas = req.body.completadas; // Array de objetos {semana, dia}
+        await db.collection('estado_rutinas').updateOne(
+            { tipo: 'predefinidas_completadas' },
+            { $set: { valor: completadas } },
+            { upsert: true }
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
