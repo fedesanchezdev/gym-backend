@@ -182,10 +182,10 @@ app.post('/rutinas_predefinidas_completadas', async (req, res) => {
 
 app.post('/validar-clave', (req, res) => {
     const { clave } = req.body;
-    // Cambia 'miclave' por la clave que quieras usar
+    // Cambia '6573' por la clave que quieras usar
     if (clave === '6573') {
-        res.json({ success: true });
+        res.json({ acceso: true });
     } else {
-        res.status(401).json({ success: false });
+        res.status(401).json({ acceso: false });
     }
 });
