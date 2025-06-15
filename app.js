@@ -193,8 +193,7 @@ app.post('/validar-clave', (req, res) => {
 app.get('/historial/:id', async (req, res) => {
     try {
         const ejercicioId = req.params.id;
-        // Ajusta la colección y la consulta según tu estructura de datos
-        const historial = await db.collection('historial')
+        const historial = await db.collection('historial_series')
             .find({ ejercicio_id: new ObjectId(ejercicioId) })
             .sort({ fecha: -1 })
             .toArray();
