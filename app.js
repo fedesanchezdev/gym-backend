@@ -189,3 +189,17 @@ app.post('/validar-clave', (req, res) => {
         res.status(401).json({ acceso: false });
     }
 });
+
+app.get('/historial/:id', async (req, res) => {
+    try {
+        const ejercicioId = req.params.id;
+        // Ajusta la colección y la consulta según tu estructura de datos
+        const historial = await db.collection('historial')
+            .find({ ejercicio_id: new ObjectId(ejercicioId) })
+            .sort({ fecha: -1 })
+            .toArray();
+        res.json(historial);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
