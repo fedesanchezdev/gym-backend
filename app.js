@@ -202,3 +202,18 @@ app.get('/historial/:id', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// Eliminar una entrada del historial por su _id
+app.delete('/historial/entrada/:id', async (req, res) => {
+    try {
+        const entradaId = req.params.id;
+        const result = await db.collection('historial_series').deleteOne({ _id: new ObjectId(entradaId) });
+        if (result.deletedCount === 1) {
+            res.json({ success: true });
+        } else {
+            res.status(404).json({ success: false, error: 'No encontrado' });
+        }
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
