@@ -324,10 +324,10 @@ app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });
 });
 
-/*
-COMENTARIOS IMPORTANTES:
-- Cambia el valor de MONGO_URI en tu archivo .env por tu cadena de conexión de MongoDB Atlas.
-- Si cambias el nombre de la base de datos, actualiza DB_NAME.
-- Si cambias el puerto, actualiza PORT.
-- Asegúrate de que el frontend use los IDs correctos (_id de MongoDB y rutina_id).More actions
-- Si tu frontend está en otro dominio, puedes restringir CORS para mayor seguridad.
+
+// COMENTARIOS IMPORTANTES:
+// - Cambia el valor de MONGO_URI en tu archivo .env por tu cadena de conexión de MongoDB Atlas.
+// - Si cambias el nombre de la base de datos, actualiza DB_NAME.
+// - Si cambias el puerto, actualiza PORT.
+// - Asegúrate de que el frontend use los IDs correctos (_id de MongoDB y rutina_id).More actions
+// - Si tu frontend está en otro dominio, puedes restringir CORS para mayor seguridad.
