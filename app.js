@@ -40,6 +40,25 @@ app.get('/ejercicios', async (req, res) => {
     }
 });
 
+// Crear un nuevo ejercicio
+app.post('/ejercicios', async (req, res) => {
+    try {
+        const { codigo, grupo_muscular, nombre, series, tipo, descripcion, url } = req.body;
+        await db.collection('ejercicios').insertOne({
+            codigo,
+            grupo_muscular,
+            nombre,
+            series,
+            tipo,
+            descripcion,
+            url
+        });
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // Obtener la rutina de hoy (INCLUYE COMENTARIO)
 app.get('/rutina_hoy', async (req, res) => {
     try {
